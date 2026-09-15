@@ -1,0 +1,8 @@
+numpy
+pandas
+sentence-transformers
+faiss-cpu
+anthropic
+pydantic-settings
+fastapi
+uvicorn

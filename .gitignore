@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+
+# Generated corpus/embedding artifacts (data/corpus_embeddings.npy is
+# ~146MB -- over GitHub's 100MB hard limit without LFS, and reproducible
+# from source via `python scripts/build_corpus.py` anyway, so it's
+# regenerated rather than committed) and the raw download cache.
+data/
