@@ -15,7 +15,7 @@ RAG pipeline so it retrieves from a real 100,000-paragraph Wikipedia corpus
 instead of sitting in a notebook.
 
 ### Contents
-[Why I built this](#why-i-built-this) · [Demo](#demo) · [Architecture](#architecture) · [How HNSW actually works](#how-hnsw-actually-works) · [The benchmark](#the-benchmark) · [Engineering log](#engineering-log) · [Limitations](#limitations--whats-next) · [Tech stack](#tech-stack) · [Running locally](#running-locally) · [API](#api)
+[Why I built this](#why-i-built-this) · [How this was built](#how-this-was-built) · [Demo](#demo) · [Architecture](#architecture) · [How HNSW actually works](#how-hnsw-actually-works) · [The benchmark](#the-benchmark) · [Engineering log](#engineering-log) · [Limitations](#limitations--whats-next) · [Tech stack](#tech-stack) · [Running locally](#running-locally) · [API](#api)
 
 ---
 
@@ -51,6 +51,31 @@ a working RAG demo, retrieval powered by my own HNSW (never FAISS — FAISS
 is the yardstick here, not a component), with a live side-by-side view
 showing exactly how my index's answer to a query compares to FAISS's, in
 real time, on the same question.
+
+## How this was built
+
+Nine batches, each one a single focused unit of work — never multiple
+unrelated things bundled together — built in this order, with a real
+test against a real result required before the next one started:
+
+| # | Batch | What it proved |
+|---|---|---|
+| 1 | HNSW graph construction | Layered graph builds correctly — reachability, degree caps, layer structure, all checked on a real 2000-node index |
+| 2 | HNSW multi-layer search | The recall/latency tradeoff is real and controllable — recall climbs from 0.77 to 1.00 as `ef` increases, exactly as the algorithm predicts |
+| 3 | Brute-force ground truth | An oracle independent of HNSW's own code exists to grade it against — can't share a bug with the thing it's judging |
+| 4 | Corpus + embedding pipeline | Real Wikipedia text, real embeddings, verified row-order consistency between two separately-written output files |
+| 5 | Benchmark harness | Reusable, index-agnostic measurement code — the same functions later graded FAISS with zero changes |
+| 6 | FAISS integration | The actual comparison this project exists to produce — real numbers, on real data, at real scale |
+| 7 | RAG pipeline | Retrieval + a grounded Claude answer, working end to end on real corpus text |
+| 8 | FastAPI backend | The pipeline reachable over HTTP — query, live comparison, and benchmark endpoints |
+| 9 | Frontend demo UI | All of the above, visible and usable in a browser, not just curlable |
+
+Each batch's own reasoning — what was decided, what alternative got
+rejected and why, what broke and how — is captured in the engineering
+log below. The order above is also, not incidentally, the order in which
+a real bug in one batch could only have been caught once the batch after
+it existed to expose it (see: the memory-measurement story, or the
+concurrency crash that only a real frontend could trigger).
 
 ## Demo
 
