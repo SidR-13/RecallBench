@@ -1,0 +1,42 @@
+{
+  "corpus_size": 7800,
+  "n_queries": 200,
+  "k": 10,
+  "M": 16,
+  "ef_construction": 200,
+  "seed": 42,
+  "build_seconds": 11.7491957500024,
+  "index_memory_mb": 30.0,
+  "ef_sweep": [
+    {
+      "ef": 10,
+      "recall_at_k": 0.889,
+      "latency_p50_ms": 0.1601250041858293,
+      "latency_p95_ms": 0.24757355058682148
+    },
+    {
+      "ef": 50,
+      "recall_at_k": 0.9895000000000002,
+      "latency_p50_ms": 0.4852915008086711,
+      "latency_p95_ms": 0.6156722949526738
+    },
+    {
+      "ef": 100,
+      "recall_at_k": 0.9965,
+      "latency_p50_ms": 0.8352709992323071,
+      "latency_p95_ms": 1.0333545025787314
+    },
+    {
+      "ef": 200,
+      "recall_at_k": 0.9995,
+      "latency_p50_ms": 1.4744585059816018,
+      "latency_p95_ms": 1.7177542053104842
+    },
+    {
+      "ef": 400,
+      "recall_at_k": 1.0,
+      "latency_p50_ms": 2.4604580030427314,
+      "latency_p95_ms": 2.819485102372709
+    }
+  ]
+}
