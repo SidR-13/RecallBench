@@ -10,9 +10,9 @@
 
 A from-scratch implementation of HNSW — the graph algorithm underlying
 production vector databases such as Pinecone and Weaviate — benchmarked
-rigorously against FAISS, the industry-standard library, and integrated
-into a working RAG pipeline that retrieves from a real 100,000-paragraph
-Wikipedia corpus.
+against FAISS, the industry-standard library, and built into a working
+RAG pipeline that retrieves from a real 100,000-paragraph Wikipedia
+corpus.
 
 ### Contents
 [Why I built this](#why-i-built-this) · [How this was built](#how-this-was-built) · [Demo](#demo) · [Architecture](#architecture) · [How HNSW actually works](#how-hnsw-actually-works) · [The benchmark](#the-benchmark) · [Engineering log](#engineering-log) · [Limitations](#limitations--whats-next) · [Tech stack](#tech-stack) · [Running locally](#running-locally) · [API](#api)
@@ -21,62 +21,62 @@ Wikipedia corpus.
 
 ## Why I built this
 
-Assembling a RAG pipeline from existing libraries demonstrates
-integration skill, not algorithmic understanding. It says nothing about
-whether the person doing the assembling understands what those libraries
-are actually doing beneath the API surface they called.
+I use vector search the way most people building AI applications do —
+through a library, behind an API call, without ever seeing what happens
+between "here's a query" and "here are the ten most similar things in a
+hundred thousand documents." That gap bothered me. I didn't want to just
+know *that* HNSW makes this fast; I wanted to know *how*, well enough to
+build it myself and watch it work.
 
-Vector search is the component that matters most in a RAG system: given
-a query, retrieve the small set of documents — out of what could be
-millions — that are actually relevant, quickly enough that latency never
-becomes the user's problem. Every production vector database in wide use
-today, including Pinecone, Weaviate, Qdrant, and FAISS itself, solves
-this with some variant of the same underlying algorithm: **HNSW**, a
-hierarchical graph structure that replaces an exhaustive scan with a
-small number of targeted hops. This project implements that algorithm
-from first principles, in plain NumPy, with no approximate-nearest-
-neighbor library anywhere near the core implementation. Importing one
-would have defeated the reason for building this at all.
+So that's what this project is: HNSW, implemented from the ground up in
+plain NumPy, with no shortcut library anywhere near the core. Not
+because it needed reinventing — FAISS already does this better than I
+was going to on a first attempt — but because building it was the only
+way to actually understand the layered graph, the greedy descent, the
+`ef` knob that trades speed for accuracy. Reading the paper told me what
+the algorithm does. Implementing it is what taught me why every piece is
+there.
 
-An implementation without a measurement attached to it is an
-unverifiable claim. The second half of this project is held to the same
-standard as the first: a rigorous, reproducible benchmark against FAISS,
-on identical data, identical queries, and identical measurement code for
-both sides. Every figure in the results table below comes from an
-executed run — never estimated, never assumed.
+Once it worked, the obvious next question was *how well*, and I didn't
+want to guess. So the second half of this project holds the
+implementation to an honest standard: a real benchmark against FAISS, on
+the same data, the same queries, the same measurement code for both
+sides. Every number in the table below is from a run I actually
+executed, not an estimate — partly because that's the only way the
+comparison means anything, and partly because I wanted to know the real
+answer myself.
 
-The third component exists so the first two do not remain a benchmark
-script in isolation: a working retrieval-augmented generation pipeline,
-with retrieval handled entirely by the hand-built index above — FAISS is
-used here strictly as the comparison baseline, never as a component of
-the working system — plus a live view comparing both indices' results on
-the same query in real time.
+The last piece — a working RAG pipeline, retrieval powered entirely by
+the index I built, with a live view comparing it to FAISS on the same
+question — exists so the understanding didn't stay theoretical. It's one
+thing to have a graph that passes its own tests; it's another to watch
+it retrieve a real, relevant paragraph in response to a real question
+and hand that off to an LLM for a grounded answer.
 
 ## How this was built
 
-Nine batches, each a single focused unit of work rather than several
-unrelated changes bundled together, built in this order, with a
-verified test against a real result required before the next one began:
+I didn't understand HNSW well enough at the start to build it in one
+pass, so I didn't try to. I broke it into nine batches — one focused
+piece of understanding at a time — and didn't let myself move to the
+next one until the current one actually worked and I could explain why:
 
-| # | Batch | What it proved |
+| # | Batch | What it taught me |
 |---|---|---|
-| 1 | HNSW graph construction | The layered graph builds correctly — reachability, degree caps, and layer structure all verified on a real 2,000-node index |
-| 2 | HNSW multi-layer search | The recall/latency tradeoff is real and controllable — recall climbs from 0.77 to 1.00 as `ef` increases, exactly as the algorithm predicts |
-| 3 | Brute-force ground truth | An oracle independent of HNSW's own code exists to grade it against, so it cannot share a bug with the implementation it is judging |
-| 4 | Corpus + embedding pipeline | Real Wikipedia text, real embeddings, and verified row-order consistency between two separately-written output files |
-| 5 | Benchmark harness | Reusable, index-agnostic measurement code — the same functions later graded FAISS with no modification |
-| 6 | FAISS integration | The comparison this project exists to produce — real numbers, on real data, at real scale |
-| 7 | RAG pipeline | Retrieval plus a grounded Claude-generated answer, working end to end on real corpus text |
-| 8 | FastAPI backend | The pipeline made reachable over HTTP — query, live comparison, and benchmark endpoints |
-| 9 | Frontend demo UI | Every prior batch made visible and usable in a browser, not only reachable by `curl` |
+| 1 | HNSW graph construction | How the layered graph actually gets built — reachability, degree limits, and layer structure, checked against a real 2,000-node index rather than assumed |
+| 2 | HNSW multi-layer search | That the recall/latency tradeoff isn't just theory — recall genuinely climbs from 0.77 to 1.00 as `ef` increases, exactly like the algorithm says it should |
+| 3 | Brute-force ground truth | Why you need an answer key that shares no code with the thing being graded — otherwise a bug can hide from itself |
+| 4 | Corpus + embedding pipeline | How much can quietly go wrong between two files that are supposed to describe the same data, and how to actually catch it |
+| 5 | Benchmark harness | How to measure something in a way that's reusable — later, the exact same functions graded FAISS with no changes at all |
+| 6 | FAISS integration | What "honest comparison" actually costs to get right — see the engineering log; this took more than one attempt |
+| 7 | RAG pipeline | How to make retrieval and generation stay honest with each other, instead of an LLM quietly papering over bad retrieval |
+| 8 | FastAPI backend | What "it works" stops meaning once real requests can hit it out of order, concurrently, with bad input |
+| 9 | Frontend demo UI | That watching the thing run in a browser finds bugs that reading the code never will |
 
-Each batch's reasoning — what was decided, what alternative was rejected
-and why, what broke and how it was fixed — is captured in the
-engineering log below. The sequence above is also, not incidentally, the
-order in which a bug in one batch could only have been exposed once the
-following batch existed to trigger it — the memory-measurement
-investigation and the concurrency crash described below are both
-examples of this.
+Every batch's reasoning — what I decided, what I tried and abandoned,
+what broke and how I figured out why — is in the engineering log below.
+The order matters: several of the real bugs I hit could only exist once
+a later batch put enough pieces together to trigger them. I didn't find
+the nastiest one until the frontend existed to reveal it.
 
 ## Demo
 
@@ -144,27 +144,28 @@ sequenceDiagram
     UI-->>U: answer + retrieved passages + live comparison
 ```
 
-`/api/query` and `/api/compare` are issued concurrently, not for
-efficiency alone but because they answer two distinct questions: whether
-the RAG pipeline produced a good answer, and whether this index agrees
-with the industry-standard one on this exact query. This concurrency is
-also, not coincidentally, what exposed the most serious bug in the
-project — see the engineering log.
+`/api/query` and `/api/compare` fire at the same time because they
+answer two different questions I wanted answered together: did the
+pipeline produce a good answer, and does my index actually agree with
+the industry-standard one on this exact question. That decision — two
+things happening at once — is also what eventually surfaced the hardest
+bug I hit on this whole project. More on that below.
 
 ---
 
 ## How HNSW actually works
 
-The underlying problem: searching every one of 100,000 vectors for the
-nearest match is O(n) — accurate, but slow. HNSW instead builds a
-small-world graph with multiple layers, each sparser than the one below
-it. The top layer contains only a handful of nodes and covers large
-distances in the vector space; the bottom layer contains every node,
-densely connected to its local neighbors. A search begins at the top,
-descends greedily toward the query through the sparse layers (cheap —
-`ef=1`, one hop at a time), then switches to a wide beam search only
-once it reaches the dense bottom layer, where the precision work
-actually happens.
+The part that made HNSW click for me wasn't the paper's pseudocode — it
+was realizing what problem the layers are actually solving. Comparing a
+query against every one of 100,000 vectors is accurate but slow, an
+O(n) scan every single time. HNSW's answer is a small-world graph built
+in layers, each one sparser than the layer below it. The top layer has
+only a handful of nodes and can jump large distances across the vector
+space in one hop; the bottom layer holds every node with dense, local
+connections. A search starts at the top and greedily walks toward the
+query through the sparse layers — cheap, `ef=1`, one hop at a time —
+then switches to a much wider search only once it reaches the bottom,
+where the real precision work happens.
 
 ```mermaid
 flowchart TB
@@ -193,30 +194,31 @@ flowchart TB
     A0 -->|"wide beam search, ef=100<br/>slow, precise"| RESULT(["k nearest neighbors"])
 ```
 
-The `ef` parameter controls the width of that final beam search — a
-wider beam explores more candidates, trading latency for recall. That
-tradeoff is the subject of the benchmark below: every row in the results
-table reflects the same graph, searched at a different `ef`, showing
-precisely how much accuracy costs how much time.
+`ef` is the width of that final beam search — wider means more
+candidates explored, which means better recall at the cost of latency.
+That single knob turned out to be the entire subject of the benchmark
+below: every row in the results table is the same graph, searched at a
+different `ef`, showing exactly what that trade actually costs.
 
-Two implementation decisions are worth calling out, since both are easy
-to get wrong without noticing:
+Two decisions I made along the way, worth explaining because they're
+easy to get wrong without realizing it:
 
-- **Squared L2, not plain L2, and not cosine.** Taking a square root is
-  wasted computation when only a ranking is required — the order is
-  unaffected. Since every embedding here is L2-normalized (a real,
-  enforced invariant, not an assumption — see the corpus pipeline),
-  squared-L2 ranking is mathematically identical to cosine ranking, so
-  implementing cosine separately would have added code with no benefit.
+- **Squared L2, not plain L2, and not cosine.** Square-rooting a
+  distance is wasted work when only the ranking matters — the order
+  doesn't change either way. And once I made sure every embedding here
+  is genuinely L2-normalized (a real, enforced property, not something I
+  assumed and hoped was true — see the corpus pipeline), squared-L2
+  ranking became mathematically identical to cosine ranking. Implementing
+  cosine separately would have been extra code for nothing.
 - **Naive top-M neighbor selection, not the paper's diversity-aware
-  heuristic.** The original HNSW paper's SELECT-NEIGHBORS-HEURISTIC
-  avoids selecting neighbors clustered in a single direction. The
-  simpler version was shipped first, deliberately, with the heuristic
-  planned only if the real recall benchmark showed naive selection
-  losing meaningfully to FAISS. It did not — recall stays within about a
-  point of FAISS at every `ef` — so the heuristic was never added. That
-  is not a shortcut; it is the benchmark doing its job and indicating
-  where further effort was unnecessary.
+  heuristic.** The original paper's SELECT-NEIGHBORS-HEURISTIC avoids
+  picking neighbors that all cluster in one direction. I shipped the
+  simpler version first on purpose, and told myself I'd only add the
+  real heuristic if the recall benchmark showed the naive version
+  losing meaningfully to FAISS. It didn't — recall stays within about a
+  point of FAISS at every `ef` — so I never added it. That wasn't
+  laziness; it was the benchmark answering a question I couldn't have
+  answered by just reading the paper.
 
 ---
 
@@ -224,9 +226,8 @@ to get wrong without noticing:
 
 Both indices, the same 99,500-vector corpus (500 vectors held out as
 queries), the same `M=16`, the same `ef_construction=200`, the same
-seed. Every number below comes from one real, logged run — see the
-engineering log for what it took to trust the memory figures
-specifically.
+seed. Every number below is from one real, logged run — see the
+engineering log for what it actually took to trust the memory figures.
 
 | | Our HNSW | FAISS `IndexHNSWFlat` |
 |---|---|---|
@@ -241,156 +242,162 @@ specifically.
 | 200 | 0.9946 | 1.835ms | 0.9986 | 0.364ms |
 | 400 | 0.9974 | 3.307ms | 0.9998 | 0.686ms |
 
-**Read honestly, not defensively:** FAISS wins on every metric — it is a
-mature, production C++ library, and a different outcome would be
-surprising for a from-scratch Python implementation. What matters is the
-magnitude of the gap and its cause. Raw vector storage costs
-approximately 152.9MB on both sides (99,500 × 384 float32 values,
-unavoidable either way). Subtracting that out isolates the real
-difference: this graph's own bookkeeping costs approximately **237MB**
-in Python dict/set overhead, against FAISS's approximately **6.5MB** of
-packed C++ arrays for the equivalent structure — roughly a 36x
-difference in overhead alone, and the actual explanation for the memory
-and latency figures observed. That is a specific, defensible answer to
-why the two implementations differ, not an assumption.
+I'll read this straight rather than spin it: FAISS wins on every single
+metric. It's a mature, production C++ library maintained by people who
+do this full-time — it would honestly have been a strange result if my
+first attempt beat it. What I actually cared about was understanding
+*why*, not closing the gap. Raw vector storage costs about 152.9MB on
+both sides (99,500 × 384 float32 values — unavoidable either way).
+Subtract that out and the real difference is stark: my own graph's
+bookkeeping costs roughly **237MB** in Python dict and set overhead,
+against FAISS's roughly **6.5MB** of packed C++ arrays doing the same
+job — about a 36x difference in overhead alone, and the actual reason
+the memory and latency numbers look the way they do. That answer — a
+specific, traceable one — is what I was actually after.
 
 ---
 
 ## Engineering log
 
-Built in batches, one focused unit of work at a time, each explained,
-built, tested against a real result, and logged before the next began.
-The entries below are the ones that involved a genuine decision or a
-real bug, in the order they occurred — not a changelog of every file
-touched.
+Built in batches, one piece of understanding at a time, each one
+explained before it was built, tested against something real, and
+logged before I let myself move on. These are the entries where I
+actually got something wrong, or hit something I didn't expect — not a
+changelog of every file I touched.
 
-**A memory figure that was wrong twice, in two different ways.** The
-memory measurement began as process RSS, and the first run reported
-227.3MB. Before proceeding, the measurement's own methodology was
-re-examined, revealing that the baseline had been captured *before*
-ground-truth computation finished — a roughly 146MB transient scratch
-allocation from an unrelated phase was being counted as index memory.
-Moving the baseline corrected this to 96.6MB. Once FAISS joined the
-benchmark, the same RSS-based approach — even isolated into separate
-subprocesses specifically to avoid cross-contamination — produced
-**three different figures for the identical HNSW build**: 0MB, 95MB, and
-264MB across three consecutive runs. RSS is a process-wide high-water
-mark; it reflects whatever the allocator happened to do, not the true
-size of one data structure, and no degree of process isolation corrects
-that. It was replaced entirely with `memory_bytes()` — a deterministic
-traversal of the graph's actual owned Python objects on this side, and
-`faiss.serialize_index()`'s byte count on FAISS's — verified by
-confirming the value is bit-for-bit identical across repeated calls on
-an unmodified index, a property RSS could never satisfy.
+**A memory number that fooled me twice, in two different ways.** My
+first attempt at measuring memory used process RSS, and it reported
+227.3MB. Before trusting that number, I went back over the measurement
+itself and found the baseline had been taken *before* an unrelated
+computation finished — a roughly 146MB scratch allocation from
+somewhere else was quietly getting counted as if it were the index's
+own memory. Moving the baseline fixed it to 96.6MB, and I thought that
+was the end of it. It wasn't. Once FAISS joined the benchmark, the same
+RSS-based approach — even after I isolated each build into its own
+subprocess specifically to stop this kind of contamination — gave me
+**three different answers for the exact same HNSW build**: 0MB, 95MB,
+264MB, three runs in a row. That's when I understood the real problem:
+RSS is a process-wide high-water mark, not a measurement of one data
+structure, and no amount of isolating processes fixes that if the thing
+you're measuring was never the right thing to measure. I replaced it
+entirely with `memory_bytes()` — a direct, deterministic walk of the
+graph's actual owned Python objects on my side, and FAISS's own
+`serialize_index()` byte count on the other — and only trusted it once I
+confirmed it gave the identical number, bit for bit, every single time I
+called it on an unchanged index. RSS had never once managed that.
 
-**An id-serialization bug that had already been fixed once, elsewhere.**
-The brute-force ground-truth module initially crashed on non-integer
-ids and was fixed with `.item()`, converting any NumPy scalar back to
-its native Python type — the fix's own commit noted this would matter
-"once this is exposed via an API." That prediction held: the first live
-API test crashed immediately with a `numpy.int64 is not iterable` error
-from FastAPI's JSON encoder, because the hand-built HNSW and the FAISS
-wrapper had never received the equivalent fix — nothing had previously
-needed to serialize their output. The same one-line fix was applied to
-both.
+**A bug I'd already fixed once, without realizing where else it lived.**
+Early on, my brute-force ground-truth code crashed on non-integer ids,
+and I fixed it with `.item()` — converting whatever NumPy scalar type
+came back into a real Python type. At the time I even wrote a note to
+myself that this would matter once anything needed to turn these results
+into JSON. I was right, and I'd still managed to forget it: the first
+time I actually hit the backend with a real request, it crashed
+instantly with `numpy.int64 is not iterable`, because I'd never gone
+back and applied the same fix to my own HNSW or the FAISS wrapper —
+nothing had needed it until an API existed. Same one-line fix, just
+finally in all three places instead of one.
 
-**A crash with no stack trace.** During frontend integration, the first
-real search — submitting a question and pressing search — hung the
-entire server. Direct concurrent requests reproduced the failure:
-sometimes a hang, sometimes the Python process **terminating with no
-traceback at all**, immediately after printing the first line of a
-progress bar. The absence of a traceback combined with failure mid
-native call is characteristic of a segfault, not a Python exception. The
-root cause: the embedding model loads lazily on first use with no
-synchronization, and the frontend issues two endpoints concurrently
-(`/api/query` and `/api/compare`, both genuinely required) — both
-reached the uninitialized model on separate threads simultaneously, and
-concurrent first-time construction of the underlying model crashed the
-process outright. A lock around construction alone proved insufficient,
-since concurrent *inference* calls could also crash it, so the fix
-serializes the entire embedding call — construction and inference both
-— behind a single `threading.Lock()`. Verified by re-running the exact
-browser flow afterward: zero console errors, a correct answer, correct
-retrieved passages.
+**A crash with no stack trace, which scared me for a minute.** The
+first time I actually used the frontend — typed a question, clicked
+search — the whole server just hung. No error, nothing in the logs.
+Sending the same requests by hand from the terminal reproduced it: some
+of the time a hang, and some of the time the entire Python process
+**disappeared with no traceback at all**, right after printing the
+first line of a progress bar. No traceback plus dying inside a native
+call is what a segfault looks like, not what a normal Python bug looks
+like. Digging in, the actual cause was almost mundane: my embedding
+model loads itself the first time it's used, with no protection against
+two things asking for it at once — and the frontend calls two endpoints
+at the same moment on purpose (`/api/query` and `/api/compare`, both
+genuinely needed for the page). Both hit the not-yet-loaded model on two
+different threads at the same instant, and building the model twice at
+once from two threads crashed the whole process. Locking just the setup
+step wasn't enough, either — it turned out even running the model
+*after* it's loaded isn't safe to do from two threads simultaneously —
+so the fix locks the entire embedding call, start to finish, behind one
+lock. I only trusted it once I ran the exact same browser flow again and
+watched it come back clean: no console errors, a real answer, real
+passages.
 
-**A race condition that only appears under real concurrent load.** Once
-the backend was complete, an exhaustive review pass — eight parallel
-review agents, with every finding independently reproduced before being
-accepted as a real bug — identified that the FAISS wrapper sets FAISS's
-`efSearch` as a side effect on shared index state, with no lock, while a
-shared FastAPI instance's thread pool could invoke it from two
-directions at once. The race was confirmed directly with a minimal,
-unwrapped reproduction using raw FAISS with no surrounding code: two
-threads searching with different `ef` values raced at roughly one in
-eight hundred attempts — real, if narrow. It was fixed with a lock
-around the entire set-then-search critical section, the same category
-of bug as the embedding crash above, one layer higher in the stack. The
-first regression test written for this had a bug of its own — it
-compared FAISS's genuine string ids against raw integer array positions,
-which can never match regardless of any race — caught and corrected
-before the fix was trusted, which is the entire purpose of verification
-rather than assumption.
+**A race I only found because I went back and checked things I'd
+already shipped.** After the backend was working, I went back through
+everything more carefully than I had the first time — not because
+something was obviously broken, but because I wanted to be sure. That's
+how I found that my FAISS wrapper sets FAISS's search width (`efSearch`)
+as a side effect on a single shared object, with no lock, right before
+the backend could call it from two directions at once. I built the
+smallest possible reproduction I could — raw FAISS, no wrapper at all —
+and confirmed it: two threads searching with different search widths
+really did race, about once in every eight hundred tries. Rare, but
+real. I fixed it the same way as the crash above, with a lock around the
+whole set-and-search step. The first test I wrote to prove the fix
+worked was itself wrong — I'd compared FAISS's real string ids against
+plain number positions, which could never match regardless of any race
+— and catching that in myself, before believing my own "it's fixed,"
+mattered as much as the actual fix.
 
-**The same review pass also identified:** `k<=0` crashing FAISS's C++
-layer outright while silently returning nearly all results from the
-hand-built HNSW (Python's negative-slice semantics behaving unexpectedly
-but without error); the complete absence of input validation at the
-network boundary, meaning nothing prevented a client from requesting
-`ef=5,000,000` and occupying a server thread indefinitely; and an
-unhandled `KeyError` risk if a persisted index and the corpus metadata
-file were ever rebuilt out of sync with each other. All three were
-fixed at the source — an early `k<=0` return in both index
-implementations, `Field(gt=0, le=...)` bounds on the request schema
-itself, and a startup check that fails immediately with an actionable
-message rather than surfacing as an unpredictable crash weeks later.
+**Going back over everything also turned up:** a search for zero results
+that crashed FAISS outright while my own HNSW just quietly returned
+almost everything instead of erroring (Python's negative-slicing doing
+something technically correct and completely wrong); no limits anywhere
+on what a request could actually ask for, so nothing stopped a search
+width of five million from tying up a server thread; and a case where,
+if the saved index and the text it's supposed to point to ever fell out
+of sync, the very first affected query would just crash with no useful
+explanation. I fixed all three at the root — an early, explicit "return
+nothing" for a zero-or-negative request in both index types, real
+bounds on what a request is even allowed to ask for, and a check at
+startup that fails loudly and clearly instead of waiting to fail
+randomly later.
 
-**Answering "I don't know" instead of guessing.** The RAG system prompt
-explicitly instructs Claude to answer only from the retrieved passages
-and to say so when they do not contain the answer — a deliberate design
-choice ensuring a poor answer is always traceable to poor retrieval,
-rather than the model quietly filling gaps from its own training data.
-On the smaller test corpus, asked a question its five retrieved
-passages genuinely did not answer directly, Claude did exactly that:
-stated that the context lacked sufficient information rather than
-answering regardless. Nothing prompted it to hedge specifically — the
-instruction asked for honesty, and a real run demonstrated that the
-instruction held.
+**Getting Claude to say "I don't know" instead of guessing.** I told
+Claude, explicitly, to answer only from the passages it was actually
+given, and to say so plainly if those passages didn't contain the
+answer — I wanted a bad answer to always trace back to bad retrieval,
+never to the model quietly filling in gaps from what it already knew.
+On a smaller test corpus, I asked a question its five retrieved
+passages genuinely didn't answer, and Claude did exactly what I'd asked:
+said the context wasn't enough, instead of answering anyway. I hadn't
+built anything special to make that happen — I'd just asked for honesty
+and watched a real run actually deliver it.
 
 ---
 
 ## Limitations & what's next
 
-**No diversity-aware neighbor selection.** The HNSW paper's
-SELECT-NEIGHBORS-HEURISTIC, which avoids neighbors clustered in a single
-direction, was deliberately omitted — the real recall benchmark never
-showed naive top-M selection losing enough ground to FAISS to justify
-the added complexity. Worth revisiting only if a substantially larger
-corpus changes that result.
+**No diversity-aware neighbor selection.** The original paper's
+SELECT-NEIGHBORS-HEURISTIC, which avoids picking neighbors that cluster
+in one direction, was left out on purpose — the real recall benchmark
+never showed the simpler version losing enough to FAISS to justify
+building the more complex one. Worth coming back to only if a much
+larger corpus changes that answer.
 
-**No index persistence versioning.** The live server loads
-`data/hnsw_index.pkl` and `faiss_index.bin`, built by a one-off script;
-nothing tracks which corpus snapshot an index was built from beyond a
-startup id-coverage check. A production version would version the
-corpus and the index together explicitly, rather than detecting drift
-after the fact.
+**No versioning on the saved indices.** The live server loads
+`data/hnsw_index.pkl` and `faiss_index.bin`, built once by a script;
+nothing tracks which exact corpus snapshot either one came from beyond a
+check at startup that the two at least agree with each other. A real
+version of this would version the corpus and the index together
+explicitly, instead of only catching drift after it's already happened.
 
-**No authentication, no rate limiting.** Every endpoint is open — an
-acceptable state for a local demo, not for a public deployment. The
-`k`/`ef` bounds prevent the worst case of a single arbitrarily expensive
-request, but nothing limits request volume.
+**No authentication, no rate limiting.** Every endpoint is open, which
+is fine for something running on my own machine and not fine for
+anything public. The bounds on `k`/`ef` stop the worst single request;
+nothing stops volume.
 
-**The frontend renders answers as plain text, not Markdown.** Claude
-occasionally opens an answer with a Markdown heading; the interface
-displays it literally rather than rendering it. This is cosmetic, not a
-correctness issue — retrieval and generation are both unaffected.
+**The frontend shows answers as plain text, not rendered Markdown.**
+Claude sometimes opens an answer with a Markdown heading, and the
+interface just shows the raw `#` instead of rendering it. Cosmetic, not
+a correctness problem — the retrieval and the answer underneath are
+both fine.
 
-**Deployment is optional and, deliberately, incomplete.** The project
-roadmap always marked this step conditional on "going live" rather than
-required — the resume payload (the benchmark table) and the working
-demo do not depend on a public URL to be genuine. Reusing existing
-infrastructure would keep the marginal cost near zero; provisioning a
-new instance would incur real, ongoing cost. This was left as a
-deliberate choice, not an oversight.
+**Deployment is optional, and I left it that way on purpose.** It was
+always marked "if going live" in the plan, not required — the benchmark
+table and the working demo don't need a public URL to be real. Reusing
+infrastructure I already have would cost almost nothing extra; standing
+up something new would cost real, ongoing money for a step that was
+never actually required. A deliberate choice, not something I ran out of
+time for.
 
 ---
 
@@ -398,13 +405,13 @@ deliberate choice, not an oversight.
 
 | Layer | Choice | Why |
 |---|---|---|
-| Core algorithm | Python 3.11, NumPy only | No approximate-nearest-neighbor library anywhere near the HNSW implementation — using one would defeat the purpose of the project |
-| Benchmark baseline | FAISS (`faiss-cpu`) | The industry-standard reference point this project measures itself against, never a shortcut inside the core implementation |
+| Core algorithm | Python 3.11, NumPy only | No approximate-nearest-neighbor library anywhere near the HNSW implementation — using one would have skipped the entire reason I built this |
+| Benchmark baseline | FAISS (`faiss-cpu`) | The real, industry-standard thing to measure myself against — never used as a shortcut inside the core implementation |
 | Embeddings | `sentence-transformers`, `all-MiniLM-L6-v2` | Small and fast enough to run locally with no per-query cost; 384-dimensional, L2-normalized output |
-| LLM | Claude API (Haiku) | Grounded-only prompting; the `AI_MOCK` flag skips real calls entirely, so the full pipeline runs at zero cost and without a key |
-| Backend | FastAPI | Async-capable, and its dependency-injection-free `app.state` pattern was sufficient for a single-process demo with no database |
+| LLM | Claude API (Haiku) | Grounded-only prompting; the `AI_MOCK` flag skips real calls entirely, so the whole pipeline runs at zero cost and without a key |
+| Backend | FastAPI | Async-capable, and its `app.state` pattern was simple enough for a single-process demo with no database |
 | Frontend | React 19, TypeScript, Vite, Tailwind v4, Recharts | A typed API contract end-to-end; Recharts for the recall/latency chart |
-| Corpus | Simple English Wikipedia (paragraph-chunked, public dataset) | Real, topically diverse text at a scale (100,000 paragraphs) large enough for the benchmark figures to be meaningful |
+| Corpus | Simple English Wikipedia (paragraph-chunked, public dataset) | Real, topically diverse text at a scale (100,000 paragraphs) large enough for the benchmark numbers to actually mean something |
 
 ## Running locally
 
