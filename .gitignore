@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 .env
+CLAUDE_CONTEXT.md
 
 # Generated corpus/embedding artifacts (data/corpus_embeddings.npy is
 # ~146MB -- over GitHub's 100MB hard limit without LFS, and reproducible
